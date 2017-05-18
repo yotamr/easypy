@@ -1,6 +1,20 @@
+from easypy.exceptions import TException
+
+class MissingRequiredFields(TException):
+    template = 'Bunch is missing required fields {_missing_fields}'
+
+class CannotDeleteRequiredField(TException):
+    template = 'Bunch cannot delete required field {_required_field}'
+
 class Bunch(dict):
 
     __slots__ = ("__stop_recursing",)
+
+    def __init__(self, *args, **kwargs):
+        if getattr(self, '_required_fields', False):
+            self._verify_fields(kwargs.keys())
+
+        super(Bunch, self).__init__(*args, **kwargs)
 
     def __getattr__(self, name):
         try:
@@ -18,6 +32,13 @@ class Bunch(dict):
             if isinstance(key, Integral):
                 return self[str(key)]
             raise
+
+    def __delitem__(self, key):
+        _required_fields = getattr(self, '_required_fields', False)
+        if _required_fields and key in _required_fields:
+            raise CannotDeleteRequiredField(_required_field = key)
+
+        return super(Bunch, self).__delitem__(key)
 
     def __setattr__(self, name, value):
         self[name] = value
@@ -47,6 +68,13 @@ class Bunch(dict):
             finally:
                 dict.__delattr__(self, "__stop_recursing")
         return "%s(%s)" % (self.__class__.__name__, attrs)
+
+    def _verify_fields(self, keys):
+        required_fields = set(getattr(self, '_required_fields'))
+        keys = set(keys)
+        if not required_fields.issubset(keys):
+            missing_fields = required_fields.difference(keys)
+            raise MissingRequiredFields(_missing_fields = missing_fields)
 
     def _repr_pretty_(self, p, cycle):
         # used by IPython
